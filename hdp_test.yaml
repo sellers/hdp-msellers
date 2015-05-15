@@ -1,0 +1,61 @@
+{# jinja2 #}
+#cloud-config
+#
+output:
+ all: "|tee -a /var/tmp/cloudinit.out"
+hostname: {{ hostname }}
+bootcmd:
+ - gpg --keyserver pgp.mit.edu --recv-keys B9733A7A07513CAD
+ - gpg -a --export 07513CAD | apt-key add -
+ - useradd -g 1000 -u 1001 -s /bin/bash -d /home/ams -c 'AMS default user (HDP)' ams
+ - usermod -g adm ams
+apt_sources:
+ - source: deb http://public-repo-1.hortonworks.com/ambari/ubuntu12/2.x/updates/2.0.0 Ambari main
+ - source: deb http://public-repo-1.hortonworks.com/HDP/ubuntu12/2.x/updates/2.2.4.2 HDP main
+ - source: deb http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/ubuntu12 HDP-UTILS main
+packages:
+ - postgresql-9.3
+ - python-pip
+ - python-boto
+ - odbc-postgresql
+ - apache2
+ - apache2-mpm-prefork
+ - language-pack-en
+ - zlibc
+ - ambari-server
+ - openjdk-7-jdk
+final_message: "The system is up, after $UPTIME seconds"
+runcmd:
+{% if production %}
+ - touch /PRODUCTION
+{% else %}
+ - touch /DEVEL
+{% endif %}
+ - echo [Credentials] > /etc/default/boto
+ - echo aws_access_key_id = {{ aws_key }} >> /etc/default/boto
+ - echo aws_secret_access_key = {{ aws_secret }} >> /etc/default/boto
+ - echo [s3] >> /etc/default/boto
+ - echo host = s3.us-west-2.amazonaws.com >> /etc/default/boto
+ - echo [Boto] >> /etc/default/boto
+ - echo http_socket_timeout = 1800
+ - ln -s /etc/default/boto /root/.boto
+ - ln -s /etc/default/boto /home/ubuntu/.boto
+ - ln -s /etc/default/boto /etc/boto.cfg
+ - pip install awscli
+ - echo CREATE ROLE dalake PASSWORD \'HDP\' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT LOGIN | su -c psql postgres
+ - echo CREATE ROLE pgsql PASSWORD \'HDP\' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT LOGIN | su -c psql postgres
+ - echo "CREATE DATABASE fs OWNER dalake TEMPLATE = template0 ENCODING 'utf8'" | su -c psql postgres
+ - echo "HDP" > /root/S3_BUCKET
+ - |
+    python -c "
+    import boto
+    bucket=open('/root/S3_BUCKET', 'r').readline().strip()
+    boto.connect_s3().create_bucket(bucket)
+    " 
+{% if production %}
+ -  AWS_CONFIG_FILE=/home/ubuntu/.boto aws s3 cp s3://HDP/db_dumps/{{hostname}}/{{hostname}}-latest-lake.pg_dump /tmp/
+{% else %}
+ -  AWS_CONFIG_FILE=/home/ubuntu/.boto aws --region us-west-2 s3 cp s3://HDP/db_dumps/{{hostname}}/{{hostname}}-latest-lake.pg_dump /tmp/
+{% endif %}
+ - su -c 'pg_restore -d fs /tmp/{{hostname}}-latest-lake.pg_dump' postgres
+ - service apache2 restart
