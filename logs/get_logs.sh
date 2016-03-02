@@ -52,5 +52,5 @@ do
 
     # be a good linuxzen and clean up garbage older than 30days matching our
     # pattern
-    find /var/log/ -name $TEMPFILE.* -mtime +300 -print0 | xargs -r -0 rm | logger
+    find /var/log/ -name $TEMPFILE.* -mtime +366 -print0 | xargs -r -0 rm | logger
 done
