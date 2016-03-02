@@ -21,9 +21,12 @@ then
 fi
 
 # find all possible files matching the criteria below
+# ideally there is no more than 1 file but just in case...
 SULOG=$(find -L /var -name su.log 2>/dev/null)
 SUDOLOG=$(find -L /var -name sudo.log 2>/dev/null)
 ROOTHIST=$(find -L ~root/*history* 2>/dev/null)
+TODATE=$(date +%m%d%y.%H%M)
+HOSTNAME=$(hostname)
 
 #====================================================
 
@@ -36,9 +39,11 @@ do
     do
         TEMPFILE=$(basename $file)
         echo "Merging $file into $TEMPFILE.txt..."
-        cat $file | tee -a /tmp/$TEMPFILE.txt 2>&1 > /dev/null
+        cat $file | tee -a /tmp/$TEMPFILE.$TODATE 2>&1 > /dev/null
     done
     echo "Sending gathered content of $items to $PERSON..."
-    cat /tmp/$TEMPFILE.txt | mailx -s "yummie $items" $PERSON
-done
+    cat /tmp/$TEMPFILE.txt | mailx -s "$items info from $HOSTNAME" $PERSON
 
+    # be a good linuxzen and clean up garbage
+    find /tmp/ -name $TEMPFILE.* -mtime +100 -print0 | xargs -0 rm
+done
