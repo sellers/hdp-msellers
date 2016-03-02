@@ -1,4 +1,5 @@
 #!/bin/bash -e
+# bash -e should quit on first error, to prevent unexpected state
 # This script will run on any Linux
 # This script will fail on many Solaris, AIX, or UNIX systems w/o bash installed
 # 
@@ -25,6 +26,7 @@ fi
 SULOG=$(find -L /var -name su.log 2>/dev/null)
 SUDOLOG=$(find -L /var -name sudo.log 2>/dev/null)
 ROOTHIST=$(find -L ~root/*history* 2>/dev/null)
+
 TODATE=$(date +%m%d%y.%H%M)
 HOSTNAME=$(hostname)
 
@@ -38,12 +40,17 @@ do
     for file in ${!items}
     do
         TEMPFILE=$(basename $file)
-        echo "Merging $file into $TEMPFILE.txt..."
-        cat $file | tee -a /tmp/$TEMPFILE.$TODATE 2>&1 > /dev/null
+        echo "  >> Searching for $file to copy to $TEMPFILE.$TODATE..."
+        cat $file | tee -a /var/log/$TEMPFILE.$TODATE 2>&1 > /dev/null
+        if [[ ! $file =~ "history" ]]
+        then
+            > $file   # zero out file for new month
+        fi
     done
-    echo "Sending gathered content of $items to $PERSON..."
-    cat /tmp/$TEMPFILE.txt | mailx -s "$items info from $HOSTNAME" $PERSON
+    echo " >> Sending gathered content of $items to $PERSON..."
+    cat /var/log/$TEMPFILE.$TODATE | mailx -s "$items info from $HOSTNAME" $PERSON
 
-    # be a good linuxzen and clean up garbage
-    find /tmp/ -name $TEMPFILE.* -mtime +100 -print0 | xargs -0 rm
+    # be a good linuxzen and clean up garbage older than 30days matching our
+    # pattern
+    find /var/log/ -name $TEMPFILE.* -mtime +300 -print0 | xargs -r -0 rm | logger
 done
